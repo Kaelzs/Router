@@ -37,7 +37,7 @@ open class Router {
         switch preOpenResult.destination {
         case .viewController(let destinationViewController):
             let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
-                let handle = middleware.afterFinding(destinationViewController, parameter: parameters, originalURL: preOpenResult.url, router: self)
+                let handle = middleware.afterFinding(destinationViewController, parameters: parameters, originalURL: preOpenResult.url, router: self)
 
                 switch handle {
                 case .allow(let newParameters):
@@ -48,13 +48,13 @@ open class Router {
             }
 
             do {
-                try openHandler.performJump(parameter: parameters, animated: animated, url: preOpenResult.url, destination: destinationViewController)
+                try openHandler.performJump(parameters: parameters, animated: animated, url: preOpenResult.url, destination: destinationViewController)
             } catch {
                 throw .viewControllerNotInitialized(error)
             }
         case .urlHandler(let urlHandler):
             let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
-                let handle = middleware.afterFinding(urlHandler, parameter: parameters, originalURL: preOpenResult.url, router: self)
+                let handle = middleware.afterFinding(urlHandler, parameters: parameters, originalURL: preOpenResult.url, router: self)
 
                 switch handle {
                 case .allow(let newParameters):
@@ -77,7 +77,7 @@ open class Router {
 
     public func preOpen(_ urlString: String, parameters: [String: Any]) throws(RouterError) -> OpenResult? {
         let (urlString, parameters) = middlewares.reduce((urlString, parameters)) { partialResult, middleware in
-            middleware.prepare(string: partialResult.0, parameter: partialResult.1, router: self)
+            middleware.prepare(string: partialResult.0, parameters: partialResult.1, router: self)
         }
         guard let escapedString = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: escapedString) else {
