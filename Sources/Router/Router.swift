@@ -36,19 +36,40 @@ open class Router {
 
         switch preOpenResult.destination {
         case .viewController(let destinationViewController):
+            let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
+                let handle = middleware.afterFinding(destinationViewController, parameter: parameters, originalURL: preOpenResult.url, router: self)
+
+                switch handle {
+                case .allow(let newParameters):
+                    return newParameters
+                case .block:
+                    throw RouterError.blockedByMiddleware(middleware)
+                }
+            }
+
             do {
-                try openHandler.performJump(parameter: preOpenResult.parameters, animated: animated, url: preOpenResult.url, destination: destinationViewController)
+                try openHandler.performJump(parameter: parameters, animated: animated, url: preOpenResult.url, destination: destinationViewController)
             } catch {
                 throw .viewControllerNotInitialized(error)
             }
         case .urlHandler(let urlHandler):
+            let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
+                let handle = middleware.afterFinding(urlHandler, parameter: parameters, originalURL: preOpenResult.url, router: self)
+
+                switch handle {
+                case .allow(let newParameters):
+                    return newParameters
+                case .block:
+                    throw RouterError.blockedByMiddleware(middleware)
+                }
+            }
+
             do {
-                try urlHandler.handle(withParameters: preOpenResult.parameters, url: preOpenResult.url)
+                try urlHandler.handle(withParameters: parameters, url: preOpenResult.url)
             } catch {
                 throw .urlHandlerNotHandled(error)
             }
         }
-
         return (preOpenResult.url, preOpenResult.destination, preOpenResult.parameters)
     }
 
@@ -64,34 +85,7 @@ open class Router {
         }
 
         if let internalResult = rootNodeSearch(url, parameters: parameters) {
-            switch internalResult.destination {
-            case .viewController(let destinationViewController):
-                let parameters = try middlewares.reduce(internalResult.parameter) { parameters, middleware throws(RouterError) in
-                    let handle = middleware.beforeInitialize(destinationViewController, parameter: parameters, originalURL: url, router: self)
-
-                    switch handle {
-                    case .allow(let newParameters):
-                        return newParameters
-                    case .block:
-                        throw RouterError.blockedByMiddleware(middleware)
-                    }
-                }
-
-                return (url, .viewController(destinationViewController), parameters)
-            case .urlHandler(let urlHandler):
-                let parameters = try middlewares.reduce(internalResult.parameter) { parameters, middleware throws(RouterError) in
-                    let handle = middleware.beforeHandle(urlHandler, parameter: parameters, originalURL: url, router: self)
-
-                    switch handle {
-                    case .allow(let newParameters):
-                        return newParameters
-                    case .block:
-                        throw RouterError.blockedByMiddleware(middleware)
-                    }
-                }
-
-                return (url, .urlHandler(urlHandler), parameters)
-            }
+            return (url, internalResult.destination, internalResult.parameter)
         } else {
             return nil
         }

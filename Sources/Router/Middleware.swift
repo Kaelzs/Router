@@ -16,9 +16,11 @@ public enum MiddlewareHandledStrategy {
 public protocol Middleware: Sendable, ~Copyable {
     func prepare(string: String, parameter: [String: Any], router: Router) -> (string: String, parameter: [String: Any])
 
-    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
+    @MainActor
+    func afterFinding(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
 
-    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
+    @MainActor
+    func afterFinding(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
 }
 
 public extension Middleware {
@@ -26,11 +28,11 @@ public extension Middleware {
         return (string: string, parameter: parameter)
     }
 
-    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
+    func afterFinding(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
         return .allow(parameters: parameter)
     }
 
-    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
+    func afterFinding(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
         return .allow(parameters: parameter)
     }
 }
