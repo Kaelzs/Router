@@ -14,29 +14,23 @@ public enum MiddlewareHandledStrategy {
 }
 
 public protocol Middleware: Sendable, ~Copyable {
-    func prepare(string: String, parameter: [String: Any]) -> (string: String, parameter: [String: Any])
+    func prepare(string: String, parameter: [String: Any], router: Router) -> (string: String, parameter: [String: Any])
 
-    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL) -> MiddlewareHandledStrategy
+    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
 
-    func afterInitialize<Destination: DestinationViewController>(_ destination: Destination, parameter: [String: Any], originalURL: URL, initializedViewController: UIViewController)
-
-    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL) -> MiddlewareHandledStrategy
+    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy
 }
 
 public extension Middleware {
-    func prepare(string: String, parameter: [String: Any]) -> (string: String, parameter: [String: Any]) {
+    func prepare(string: String, parameter: [String: Any], router: Router) -> (string: String, parameter: [String: Any]) {
         return (string: string, parameter: parameter)
     }
 
-    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL) -> MiddlewareHandledStrategy {
+    func beforeInitialize(_ destination: DestinationViewController.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
         return .allow(parameters: parameter)
     }
 
-    func afterInitialize<Destination: DestinationViewController>(_ destination: Destination, parameter: [String: Any], originalURL: URL, initializedViewController: UIViewController) {
-        return
-    }
-
-    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL) -> MiddlewareHandledStrategy {
+    func beforeHandle(_ destination: DestinationURLHandler.Type, parameter: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
         return .allow(parameters: parameter)
     }
 }

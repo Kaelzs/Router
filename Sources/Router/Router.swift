@@ -19,7 +19,7 @@ public enum RouterError: Error {
 open class Router {
     var middlewares: NCArray<Middleware>
     var rootNode = RouterTreeNode(pathComponent: "")
-    var openHandler: RouterOpenHandler
+    public private(set) var openHandler: RouterOpenHandler
 
     public init(openHandler: RouterOpenHandler) {
         self.rootNode = RouterTreeNode(pathComponent: "")
@@ -56,7 +56,7 @@ open class Router {
 
     public func preOpen(_ urlString: String, parameters: [String: Any]) throws(RouterError) -> OpenResult? {
         let (urlString, parameters) = middlewares.reduce((urlString, parameters)) { partialResult, middleware in
-            middleware.prepare(string: partialResult.0, parameter: partialResult.1)
+            middleware.prepare(string: partialResult.0, parameter: partialResult.1, router: self)
         }
         guard let escapedString = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: escapedString) else {
@@ -67,7 +67,7 @@ open class Router {
             switch internalResult.destination {
             case .viewController(let destinationViewController):
                 let parameters = try middlewares.reduce(internalResult.parameter) { parameters, middleware throws(RouterError) in
-                    let handle = middleware.beforeInitialize(destinationViewController, parameter: parameters, originalURL: url)
+                    let handle = middleware.beforeInitialize(destinationViewController, parameter: parameters, originalURL: url, router: self)
 
                     switch handle {
                     case .allow(let newParameters):
@@ -80,7 +80,7 @@ open class Router {
                 return (url, .viewController(destinationViewController), parameters)
             case .urlHandler(let urlHandler):
                 let parameters = try middlewares.reduce(internalResult.parameter) { parameters, middleware throws(RouterError) in
-                    let handle = middleware.beforeHandle(urlHandler, parameter: parameters, originalURL: url)
+                    let handle = middleware.beforeHandle(urlHandler, parameter: parameters, originalURL: url, router: self)
 
                     switch handle {
                     case .allow(let newParameters):
