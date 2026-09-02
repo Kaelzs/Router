@@ -13,7 +13,7 @@ import UIKit
 func testParameterPriority1() throws {
     let router = Router(openHandler: NonOpeningHandler())
 
-    router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings/purchase", parameters: ["section": "privacy"]))
 
@@ -25,7 +25,7 @@ func testParameterPriority1() throws {
 func testParameterPriority2() throws {
     let router = Router(openHandler: NonOpeningHandler())
 
-    router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestableDestinationType.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings?section=purchase", parameters: ["section": "privacy"]))
 
@@ -40,7 +40,7 @@ func testParameterPriority2() throws {
 func testParameterPriority3() throws {
     let router = Router(openHandler: NonOpeningHandler())
 
-    router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings/purchase?section=privacy", parameters: ["section": "privacy"]))
 

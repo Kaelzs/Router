@@ -35,73 +35,94 @@ struct RouterTreeNode: ~Copyable {
     }
 
     mutating func append(parts: [String], destination: Destination) {
-        guard let first = parts.first else {
+        append(parts: parts, at: 0, destination: destination)
+    }
+
+    mutating func append(parts: [String], at index: Int, destination: Destination) {
+        guard index >= 0, index < parts.count else {
             assertionFailure("Empty parts")
             return
         }
 
+        let pathComponent = parts[index]
         let findIndex = children.firstIndex { node in
-            node.pathComponent == first
+            node.pathComponent == pathComponent
         }
 
         if let findIndex {
             children.updateElement(at: findIndex) { node in
-                if parts.count == 1 {
+                if index + 1 == parts.count {
                     if node.destination == nil {
                         node.destination = destination
                     } else {
                         assertionFailure("Destination already exists")
                     }
                 } else {
-                    node.append(parts: Array(parts.dropFirst()), destination: destination)
+                    node.append(parts: parts, at: index + 1, destination: destination)
                 }
             }
         } else {
-            if parts.count == 1 {
-                let newNode = RouterTreeNode(pathComponent: first, destination: destination)
+            if index + 1 == parts.count {
+                let newNode = RouterTreeNode(pathComponent: pathComponent, destination: destination)
                 append(childNode: newNode)
             } else {
-                var newNode = RouterTreeNode(pathComponent: first)
-                newNode.append(parts: Array(parts.dropFirst()), destination: destination)
+                var newNode = RouterTreeNode(pathComponent: pathComponent)
+                newNode.append(parts: parts, at: index + 1, destination: destination)
                 append(childNode: newNode)
             }
         }
     }
 
     func findDestination(for pathComponents: [String], parameters: [String: Any]) -> DestinationFindResult? {
-        guard pathComponents.count > 0 else {
-            if let destination {
-                return (destination, parameters)
-            } else {
-                return nil
-            }
+        findDestination(for: pathComponents, at: 0, parameters: parameters)
+    }
+
+    func findDestination(for pathComponents: [String], at index: Int, parameters: [String: Any]) -> DestinationFindResult? {
+        guard index >= 0, index <= pathComponents.count else {
+            assertionFailure("Path index out of bounds")
+            return nil
         }
 
-        var pathComponents = pathComponents
-        let first = pathComponents.removeFirst()
+        guard index < pathComponents.count else {
+            return destination.map { ($0, parameters) }
+        }
+
+        let pathComponent = pathComponents[index]
 
         return children.first { node in
             if node.isParameter {
                 return true
             } else {
-                return node.pathComponent == first
+                return node.pathComponent == pathComponent
             }
         } using: { node in
             var parameters = parameters
             if node.isParameter {
-                parameters[node.parameterName] = first
+                parameters[node.parameterName] = pathComponent
             }
-            if pathComponents.isEmpty {
-                if let destination = node.destination {
-                    return (destination, parameters)
-                } else {
-                    return nil
-                }
-            } else {
-                return node.findDestination(for: pathComponents, parameters: parameters)
-            }
+            return node.findDestination(for: pathComponents, at: index + 1, parameters: parameters)
         } notFound: {
             nil
+        }
+    }
+
+    func containsDestination(for pathComponents: [String], at index: Int) -> Bool {
+        guard index >= 0, index <= pathComponents.count else {
+            assertionFailure("Path index out of bounds")
+            return false
+        }
+
+        guard index < pathComponents.count else {
+            return destination != nil
+        }
+
+        let pathComponent = pathComponents[index]
+        return children.first { node in
+            node.pathComponent == pathComponent
+        } using: { node in
+            node.containsDestination(for: pathComponents, at: index + 1)
+        } notFound: {
+            false
         }
     }
 }

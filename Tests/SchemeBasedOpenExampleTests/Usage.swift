@@ -55,7 +55,7 @@ class TestableDestinationViewController: DestinationViewController {
 extension Router {
     @MainActor
     @discardableResult
-    func open(_ urlString: String, parameters: [String: Any] = [:], animated: Bool = true, scheme: RouterScheme) throws -> OpenResult? {
+    func open(_ urlString: String, parameters: [String: Any] = [:], animated: Bool = true, scheme: RouterScheme) throws -> OpenResult {
         var parameters = parameters
         parameters[SchemeBasedRouterOpenHandler.routerParameterKey] = scheme
         return try open(urlString, parameters: parameters, animated: animated)
@@ -69,26 +69,26 @@ func testSchemeBasedOpen() throws {
     let mainScheme = RouterScheme(name: "main", navigationGenerator: { mainNavigationController })
     let router = Router(openHandler: SchemeBasedRouterOpenHandler(rootNavigationController: mainNavigationController))
 
-    router.register(URL(string: "router://page.router/home")!, destination: .viewController(TestableDestinationViewController.self))
-    router.register(URL(string: "router://page.router/settings")!, destination: .viewController(TestableDestinationViewController.self))
+    try router.register(URL(string: "router://page.router/home")!, destination: .viewController(TestableDestinationViewController.self))
+    try router.register(URL(string: "router://page.router/settings")!, destination: .viewController(TestableDestinationViewController.self))
 
-    router.register(URL(string: "router://page.router/user/login")!, destination: .viewController(TestableDestinationViewController.self))
-    router.register(URL(string: "router://page.router/user/verify")!, destination: .viewController(TestableDestinationViewController.self))
+    try router.register(URL(string: "router://page.router/user/login")!, destination: .viewController(TestableDestinationViewController.self))
+    try router.register(URL(string: "router://page.router/user/verify")!, destination: .viewController(TestableDestinationViewController.self))
 
-    _ = try #require(try router.open("router://page.router/home", animated: false, scheme: mainScheme))
+    _ = try router.open("router://page.router/home", animated: false, scheme: mainScheme)
 
     let mainNavigationControllerFromHandler = try #require((router.openHandler as? SchemeBasedRouterOpenHandler)?.navigationControllers["main"]?.object as? TestableNavigationController)
 
     #expect(mainNavigationControllerFromHandler.viewControllers.count == 1)
     #expect(mainNavigationControllerFromHandler.schemeName == "main")
 
-    _ = try #require(try router.open("router://page.router/settings", animated: false, scheme: mainScheme))
+    _ = try router.open("router://page.router/settings", animated: false, scheme: mainScheme)
 
     #expect(mainNavigationControllerFromHandler.viewControllers.count == 2)
     let settingsPage = try #require(mainNavigationControllerFromHandler.viewControllers.last as? TestableViewController)
     #expect(settingsPage.url.absoluteString == "router://page.router/settings")
 
-    _ = try #require(try router.open("router://page.router/user/login", animated: false, scheme: .user))
+    _ = try router.open("router://page.router/user/login", animated: false, scheme: .user)
 
     let userNavigationController = try #require((router.openHandler as? SchemeBasedRouterOpenHandler)?.navigationControllers["user"]?.object as? TestableNavigationController)
 

@@ -37,27 +37,28 @@ class TestableDestinationViewController: DestinationViewController {
 @MainActor
 @Test("push to new view controller")
 func testPushToNewViewController() throws {
-    let openHandler = DefaultOpenHandler(navigationController: UINavigationController())
+    let navigationController = UINavigationController()
+    let openHandler = DefaultOpenHandler(navigationController: navigationController)
     let router = Router(openHandler: openHandler)
 
-    router.register(URL(string: "router://page.router/main/:moreInfo")!, destination: .viewController(TestableDestinationViewController.self))
+    try router.register(URL(string: "router://page.router/main/:moreInfo")!, destination: .viewController(TestableDestinationViewController.self))
 
-    let openResult = try #require(try router.open("router://page.router/main/page1", parameters: ["testing": 123], animated: false))
+    let openResult = try router.open("router://page.router/main/page1", parameters: ["testing": 123], animated: false)
 
     #expect(openResult.destination == .viewController(TestableDestinationViewController.self))
-    #expect(openHandler.navigationController.viewControllers.count == 1)
+    #expect(navigationController.viewControllers.count == 1)
 
-    let testableViewController = try #require(openHandler.navigationController.viewControllers.first as? TestableViewController)
+    let testableViewController = try #require(navigationController.viewControllers.first as? TestableViewController)
     #expect(testableViewController.parameters["testing"] as? Int == 123)
     #expect(testableViewController.parameters["moreInfo"] as? String == "page1")
     #expect(testableViewController.url.absoluteString == "router://page.router/main/page1")
 
-    let openResult2 = try #require(try router.open("router://page.router/main/page2", parameters: ["testing": 456], animated: false))
+    let openResult2 = try router.open("router://page.router/main/page2", parameters: ["testing": 456], animated: false)
 
     #expect(openResult2.destination == .viewController(TestableDestinationViewController.self))
-    #expect(openHandler.navigationController.viewControllers.count == 2)
+    #expect(navigationController.viewControllers.count == 2)
 
-    let testableViewController2 = try #require(openHandler.navigationController.viewControllers[1] as? TestableViewController)
+    let testableViewController2 = try #require(navigationController.viewControllers[1] as? TestableViewController)
     #expect(testableViewController2.parameters["testing"] as? Int == 456)
     #expect(testableViewController2.parameters["moreInfo"] as? String == "page2")
     #expect(testableViewController2.url.absoluteString == "router://page.router/main/page2")

@@ -21,15 +21,22 @@ let package = Package(
             name: "Router",
             swiftSettings: [
                 .swiftLanguageMode(.v6),
-                .enableExperimentalFeature("AccessLevelOnImport"),
             ]
+        ),
+        .testTarget(
+            name: "RouterExampleTests",
+            dependencies: ["Router"]
+        ),
+        .testTarget(
+            name: "SchemeBasedOpenExampleTests",
+            dependencies: ["Router"]
         ),
         .testTarget(
             name: "RouterTests",
             dependencies: ["Router"]
         ),
         .testTarget(
-            name: "SchemeBasedOpenExampleTests",
+            name: "RouterBenchmarkTests",
             dependencies: ["Router"]
         ),
     ]

@@ -10,7 +10,7 @@ import UIKit
 
 struct RouterScheme: Sendable {
     let name: String
-    let navigationGenerator: @MainActor () -> UINavigationController
+    let navigationGenerator: @MainActor @Sendable () -> UINavigationController
 }
 
 extension RouterScheme {
@@ -22,7 +22,8 @@ enum SchemeBasedRouterError: Error {
     case invalidScheme
 }
 
-class SchemeBasedRouterOpenHandler: RouterAlwaysOpenHandler {
+@MainActor
+final class SchemeBasedRouterOpenHandler: RouterAlwaysOpenHandler {
     static var routerParameterKey: String { "_router.scheme" }
 
     var navigationControllers: [String: Weak<UINavigationController>] = [:]
@@ -32,13 +33,11 @@ class SchemeBasedRouterOpenHandler: RouterAlwaysOpenHandler {
         self.rootNavigationController = rootNavigationController
     }
 
-    @MainActor
     private func findCurrentNavigationController() -> UINavigationController? {
         let current = rootNavigationController.presentedViewController ?? rootNavigationController
         return current as? UINavigationController
     }
 
-    @MainActor
     private func navigationController(for scheme: RouterScheme) -> UINavigationController {
         // If the scheme is the current scheme, return the current navigation controller.
         // This is the simplest way to find the current navigation controller.
@@ -58,9 +57,8 @@ class SchemeBasedRouterOpenHandler: RouterAlwaysOpenHandler {
         }
     }
 
-    @MainActor
-    func performJump(viewController: UIViewController, parameter: [String: Any], animated: Bool) throws {
-        guard let scheme = parameter[Self.routerParameterKey] as? RouterScheme else {
+    func performJump(viewController: UIViewController, parameters: [String: Any], animated: Bool) throws {
+        guard let scheme = parameters[Self.routerParameterKey] as? RouterScheme else {
             throw SchemeBasedRouterError.invalidScheme
         }
         let navigationController = self.navigationController(for: scheme)
