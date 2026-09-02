@@ -7,7 +7,7 @@
 
 import UIKit
 
-public protocol RouterOpenHandler {
+public protocol RouterOpenHandler: Sendable {
     @MainActor
     func performJump(parameters: [String: Any], animated: Bool, url: URL, destination: DestinationViewController.Type) throws
 }
@@ -25,15 +25,15 @@ public extension RouterAlwaysOpenHandler {
     }
 }
 
-public class DefaultOpenHandler: RouterAlwaysOpenHandler {
-    var navigationController: UINavigationController
+@MainActor
+public final class DefaultOpenHandler: RouterAlwaysOpenHandler {
+    private let navigationController: UINavigationController
 
-    init(navigationController: UINavigationController) {
+    public init(navigationController: UINavigationController) {
         self.navigationController = navigationController
     }
 
-    @MainActor
-    public func performJump(viewController: UIViewController, parameters: [String : Any], animated: Bool) throws {
+    public func performJump(viewController: UIViewController, parameters: [String: Any], animated: Bool) throws {
         navigationController.pushViewController(viewController, animated: animated)
     }
 }

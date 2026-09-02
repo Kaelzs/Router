@@ -16,144 +16,183 @@ public enum RouterError: Error {
     case notHandled
 }
 
-open class Router {
-    var middlewares: NCArray<Middleware>
-    var rootNode = RouterTreeNode(pathComponent: "")
-    public private(set) var openHandler: RouterOpenHandler
+public final class Router {
+    private var middlewares: NCArray<Middleware>
+    private var rootNode: RouterTreeNode
+    private let coordinator: RouterReadWriteLock
+    public let openHandler: any RouterOpenHandler
 
-    public init(openHandler: RouterOpenHandler) {
+    public init(openHandler: any RouterOpenHandler) {
         self.rootNode = RouterTreeNode(pathComponent: "")
         self.middlewares = .init(count: 2)
         self.openHandler = openHandler
+        self.coordinator = RouterReadWriteLock()
+    }
+
+    // Test-only injection point for observing contention warnings and synchronizing waiter state.
+    init(openHandler: any RouterOpenHandler, contentionReporter: @escaping RouterReadWriteLock.ContentionReporter, waiterObservation: RouterReadWriteLock.WaiterObservation? = nil) {
+        self.rootNode = RouterTreeNode(pathComponent: "")
+        self.middlewares = .init(count: 2)
+        self.openHandler = openHandler
+        self.coordinator = RouterReadWriteLock(contentionReporter: contentionReporter, waiterObservation: waiterObservation)
     }
 
     @MainActor
     @discardableResult
-    public func open(_ urlString: String, parameters: [String: Any] = [:], animated: Bool = true) throws(RouterError) -> OpenResult? {
-        guard let preOpenResult = try preOpen(urlString, parameters: parameters) else {
-            throw .notHandled
-        }
+    public func open(_ urlString: String, parameters: [String: Any] = [:], animated: Bool = true) throws(RouterError) -> OpenResult {
+        let result = try coordinator.withReadAccess {
+            () throws(RouterError) -> OpenResult in
+            guard let preOpenResult = try preOpenWithReadAccessAlreadyHeld(urlString, parameters: parameters) else {
+                throw .notHandled
+            }
 
-        switch preOpenResult.destination {
-        case .viewController(let destinationViewController):
-            let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
-                let handle = middleware.afterFinding(destinationViewController, parameters: parameters, originalURL: preOpenResult.url, router: self)
+            let finalParameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
+                let strategy: MiddlewareHandledStrategy
+                switch preOpenResult.destination {
+                case .viewController(let destinationViewController):
+                    strategy = middleware.afterFinding(destinationViewController, parameters: parameters, originalURL: preOpenResult.url, router: self)
+                case .urlHandler(let urlHandler):
+                    strategy = middleware.afterFinding(urlHandler, parameters: parameters, originalURL: preOpenResult.url, router: self)
+                }
 
-                switch handle {
+                switch strategy {
                 case .allow(let newParameters):
                     return newParameters
                 case .block:
-                    throw RouterError.blockedByMiddleware(middleware)
+                    throw .blockedByMiddleware(middleware)
                 }
             }
 
+            return (preOpenResult.url, preOpenResult.destination, finalParameters)
+        }
+
+        switch result.destination {
+        case .viewController(let destinationViewController):
             do {
-                try openHandler.performJump(parameters: parameters, animated: animated, url: preOpenResult.url, destination: destinationViewController)
+                try openHandler.performJump(parameters: result.parameters, animated: animated, url: result.url, destination: destinationViewController)
             } catch {
                 throw .viewControllerNotInitialized(error)
             }
         case .urlHandler(let urlHandler):
-            let parameters = try middlewares.reduce(preOpenResult.parameters) { parameters, middleware throws(RouterError) in
-                let handle = middleware.afterFinding(urlHandler, parameters: parameters, originalURL: preOpenResult.url, router: self)
-
-                switch handle {
-                case .allow(let newParameters):
-                    return newParameters
-                case .block:
-                    throw RouterError.blockedByMiddleware(middleware)
-                }
-            }
-
             do {
-                try urlHandler.handle(withParameters: parameters, url: preOpenResult.url)
+                try urlHandler.handle(withParameters: result.parameters, url: result.url)
             } catch {
                 throw .urlHandlerNotHandled(error)
             }
         }
-        return (preOpenResult.url, preOpenResult.destination, preOpenResult.parameters)
+        return result
     }
 
     public typealias OpenResult = (url: URL, destination: Destination, parameters: [String: Any])
 
     public func preOpen(_ urlString: String, parameters: [String: Any]) throws(RouterError) -> OpenResult? {
-        let (urlString, parameters) = middlewares.reduce((urlString, parameters)) { partialResult, middleware in
+        return try coordinator.withReadAccess {
+            () throws(RouterError) -> OpenResult? in
+            try preOpenWithReadAccessAlreadyHeld(urlString, parameters: parameters)
+        }
+    }
+
+    private func preOpenWithReadAccessAlreadyHeld(_ urlString: String, parameters: [String: Any]) throws(RouterError) -> OpenResult? {
+        let prepared = middlewares.reduce((urlString, parameters)) {
+            partialResult, middleware in
             middleware.prepare(string: partialResult.0, parameters: partialResult.1, router: self)
         }
-        guard let escapedString = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: escapedString) else {
-            throw .invalidURL(urlString)
+        let parsed = try RouterURLParser.parseRuntime(prepared.0)
+        var parameters = prepared.1
+
+        for (key, value) in parsed.queryParameters where parameters[key] == nil {
+            parameters[key] = value
         }
 
-        if let internalResult = rootNodeSearch(url, parameters: parameters) {
-            return (url, internalResult.destination, internalResult.parameter)
-        } else {
-            return nil
-        }
-    }
-
-    public func register(_ middleware: consuming Middleware) {
-        middlewares.append(middleware)
-    }
-
-    public func register(_ destinationViewController: DestinationViewController.Type) {
-        register(.viewController(destinationViewController))
-    }
-
-    public func register(_ destinationURLHandler: DestinationURLHandler.Type) {
-        register(.urlHandler(destinationURLHandler))
-    }
-
-    func register(_ destination: Destination) {
-        for url in destination.routeURLs {
-            register(url, destination: destination)
-        }
-    }
-
-    func register(_ url: URL, destination: Destination) {
-        guard let scheme = url.scheme,
-              let host = url.host else {
-            assertionFailure("Invalid URL")
-            return
-        }
-
-        rootNode.append(parts: [scheme, host] + url.pathComponents, destination: destination)
-    }
-
-    func rootNodeSearch(_ url: URL, parameters: [String: Any]) -> DestinationFindResult? {
-        guard let scheme = url.scheme,
-              let host = url.host else {
+        guard let result = rootNode.findDestination(for: parsed.routeComponents, at: 0, parameters: parameters) else {
             return nil
         }
 
-        let searching = [scheme, host] + url.pathComponents
+        return (parsed.url, result.destination, result.parameter)
+    }
 
-        var parameters: [String: Any] = parameters
+    public func register(_ middleware: consuming Middleware) throws(RouterRegistrationError) {
+        let pendingMiddleware = PendingMiddleware(middleware)
+        try coordinator.withWriteAccess { () throws(RouterRegistrationError) in
+            middlewares.append(pendingMiddleware.take())
+        }
+    }
 
-        // Parameters priority
-        // path parameters > user input parameters > query parameter
-        // user input parameters should not override path parameter
+    public func register(_ destinationViewController: DestinationViewController.Type) throws(RouterRegistrationError) {
+        _ = try register(destinationViewController.routeURLs, destination: .viewController(destinationViewController))
+    }
 
-        if let queryString = url.query {
-            let queries = queryString.components(separatedBy: "&")
+    public func register(_ destinationURLHandler: DestinationURLHandler.Type) throws(RouterRegistrationError) {
+        _ = try register(destinationURLHandler.routeURLs, destination: .urlHandler(destinationURLHandler))
+    }
 
-            for query in queries {
-                let kvPair = query.components(separatedBy: "=")
+    @discardableResult
+    func register(_ destination: Destination) throws(RouterRegistrationError) -> Int {
+        try register(destination.routeURLs, destination: destination)
+    }
 
-                assert(kvPair.count == 2, "Invalid query string")
-                guard let key = kvPair.first,
-                      let value = kvPair.last else {
-                    continue
-                }
+    @discardableResult
+    func register(_ url: URL, destination: Destination) throws(RouterRegistrationError) -> Int {
+        try register([url], destination: destination)
+    }
 
-                // TODO: - Support array parameters if needed.
-                assert(!key.contains("[]"), "Array parameters is not supported")
+    @discardableResult
+    func register(_ urls: [URL], destination: Destination) throws(RouterRegistrationError) -> Int {
+        var parsedRoutes: [ParsedRouteURL] = []
+        parsedRoutes.reserveCapacity(urls.count)
 
-                if parameters[key] == nil {
-                    parameters[key] = value
-                }
+        for url in urls {
+            do {
+                parsedRoutes.append(try RouterURLParser.parseRoute(url))
+            } catch let error {
+                try failRegistration(with: error)
             }
         }
 
-        return rootNode.findDestination(for: searching, parameters: parameters)
+        var normalizedRoutes: Set<[String]> = []
+        normalizedRoutes.reserveCapacity(parsedRoutes.count)
+        for parsedRoute in parsedRoutes {
+            guard normalizedRoutes.insert(parsedRoute.routeComponents).inserted else {
+                try failRegistration(with: .duplicateRoute(parsedRoute.originalURL))
+            }
+        }
+
+        return try coordinator.withWriteAccess {
+            () throws(RouterRegistrationError) -> Int in
+            for parsedRoute in parsedRoutes {
+                guard !rootNode.containsDestination(for: parsedRoute.routeComponents, at: 0) else {
+                    try failRegistration(with: .duplicateRoute(parsedRoute.originalURL))
+                }
+            }
+
+            for parsedRoute in parsedRoutes {
+                rootNode.append(parts: parsedRoute.routeComponents, destination: destination)
+            }
+            return parsedRoutes.count
+        }
+    }
+
+    private func failRegistration(with error: RouterRegistrationError) throws(RouterRegistrationError) -> Never {
+        assertionFailure(String(describing: error))
+        throw error
+    }
+}
+
+// `coordinator` protects the mutable trie and middleware storage. The handler
+// reference is immutable and every RouterOpenHandler is Sendable.
+extension Router: @unchecked Sendable {}
+
+private final class PendingMiddleware {
+    private var value: (any Middleware)?
+
+    init(_ value: consuming any Middleware) {
+        self.value = consume value
+    }
+
+    func take() -> any Middleware {
+        guard let value = value.take() else {
+            preconditionFailure("A middleware registration can only be consumed once")
+        }
+        return value
     }
 }
