@@ -50,10 +50,8 @@ func makeBenchmarkRouteWorkload(count: Int, depth: Int, parameterized: Bool) -> 
             runtimePath.append(leaf)
         }
 
-        let registeredString =
-            "router://benchmark.test/" + registeredPath.joined(separator: "/")
-        let runtimeString =
-            "router://benchmark.test/" + runtimePath.joined(separator: "/")
+        let registeredString = "router://benchmark.test/" + registeredPath.joined(separator: "/")
+        let runtimeString = "router://benchmark.test/" + runtimePath.joined(separator: "/")
         registeredURLs.append(URL(string: registeredString)!)
         runtimeURLs.append(runtimeString)
     }
@@ -69,9 +67,9 @@ final class BenchmarkLockedCounter: @unchecked Sendable {
         lock.withLock { storage }
     }
 
-    func increment() {
+    func add(_ value: Int) {
         lock.withLock {
-            storage += 1
+            storage += value
         }
     }
 }

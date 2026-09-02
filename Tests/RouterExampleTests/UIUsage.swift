@@ -9,9 +9,9 @@
 import Testing
 import UIKit
 
-class TestableViewController: UIViewController {
-    var parameters: [String: Any] = [:]
-    var url: URL
+final class TestableViewController: UIViewController {
+    let parameters: [String: Any]
+    let url: URL
 
     init(parameters: [String: Any], url: URL) {
         self.parameters = parameters
@@ -25,9 +25,8 @@ class TestableViewController: UIViewController {
     }
 }
 
-class TestableDestinationViewController: DestinationViewController {
-    // We use the internal method to register this destination for specific url.
-    static var routeURLs: [URL] { [] }
+enum TestableDestinationViewController: DestinationViewController {
+    static let routeURLs: [URL] = []
 
     static func initialize(withParameters parameters: [String: Any], url: URL) throws -> UIViewController {
         TestableViewController(parameters: parameters, url: url)
@@ -35,8 +34,8 @@ class TestableDestinationViewController: DestinationViewController {
 }
 
 @MainActor
-@Test("push to new view controller")
-func testPushToNewViewController() throws {
+@Test("Pushes view controllers with resolved parameters")
+func pushesViewControllersWithResolvedParameters() throws {
     let navigationController = UINavigationController()
     let openHandler = DefaultOpenHandler(navigationController: navigationController)
     let router = Router(openHandler: openHandler)
@@ -45,7 +44,7 @@ func testPushToNewViewController() throws {
 
     let openResult = try router.open("router://page.router/main/page1", parameters: ["testing": 123], animated: false)
 
-    #expect(openResult.destination == .viewController(TestableDestinationViewController.self))
+    #expect(openResult.destination.typeDescription == Destination.viewController(TestableDestinationViewController.self).typeDescription)
     #expect(navigationController.viewControllers.count == 1)
 
     let testableViewController = try #require(navigationController.viewControllers.first as? TestableViewController)
@@ -53,13 +52,13 @@ func testPushToNewViewController() throws {
     #expect(testableViewController.parameters["moreInfo"] as? String == "page1")
     #expect(testableViewController.url.absoluteString == "router://page.router/main/page1")
 
-    let openResult2 = try router.open("router://page.router/main/page2", parameters: ["testing": 456], animated: false)
+    let secondOpenResult = try router.open("router://page.router/main/page2", parameters: ["testing": 456], animated: false)
 
-    #expect(openResult2.destination == .viewController(TestableDestinationViewController.self))
+    #expect(secondOpenResult.destination.typeDescription == Destination.viewController(TestableDestinationViewController.self).typeDescription)
     #expect(navigationController.viewControllers.count == 2)
 
-    let testableViewController2 = try #require(navigationController.viewControllers[1] as? TestableViewController)
-    #expect(testableViewController2.parameters["testing"] as? Int == 456)
-    #expect(testableViewController2.parameters["moreInfo"] as? String == "page2")
-    #expect(testableViewController2.url.absoluteString == "router://page.router/main/page2")
+    let secondViewController = try #require(navigationController.viewControllers[1] as? TestableViewController)
+    #expect(secondViewController.parameters["testing"] as? Int == 456)
+    #expect(secondViewController.parameters["moreInfo"] as? String == "page2")
+    #expect(secondViewController.url.absoluteString == "router://page.router/main/page2")
 }

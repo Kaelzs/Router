@@ -9,42 +9,38 @@
 import Testing
 import UIKit
 
-@Test("Parameter Priority - path > user input")
-func testParameterPriority1() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Path parameters override caller parameters")
+func pathParameterOverridesCallerParameter() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings/purchase", parameters: ["section": "privacy"]))
 
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
     #expect(preOpenResult.parameters["section"] as? String == "purchase")
 }
 
-@Test("Parameter Priority - user input > query")
-func testParameterPriority2() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Caller parameters override query parameters")
+func callerParameterOverridesQueryParameter() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings?section=purchase", parameters: ["section": "privacy"]))
 
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
-
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
-    // The user input should have higher priority than the query.
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
     #expect(preOpenResult.parameters["section"] as? String == "privacy")
 }
 
-@Test("Parameter Priority - path > query")
-func testParameterPriority3() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Path parameters override query parameters")
+func pathParameterOverridesQueryParameter() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings/:section")!, destination: .urlHandler(TestURLHandler.self))
 
-    let preOpenResult = try #require(try router.preOpen("router://page.router/settings/purchase?section=privacy", parameters: ["section": "privacy"]))
+    let preOpenResult = try #require(try router.preOpen("router://page.router/settings/purchase?section=privacy", parameters: [:]))
 
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
-    // The path should have higher priority than the query.
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
     #expect(preOpenResult.parameters["section"] as? String == "purchase")
 }

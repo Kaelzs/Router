@@ -1,5 +1,5 @@
 //
-//  RouterTest.swift
+//  RouterTests.swift
 //  Router
 //
 //  Created by Kael on 2024/11/1.
@@ -9,74 +9,57 @@
 import Testing
 import UIKit
 
-final class NonOpeningHandler: RouterOpenHandler, Sendable {
+final class NoOpOpenHandler: RouterOpenHandler, Sendable {
     func performJump(parameters: [String: Any], animated: Bool, url: URL, destination: any DestinationViewController.Type) throws {}
 }
 
-class TestableDestinationType: DestinationURLHandler {
-    // We use the internal method to register this destination for specific url.
-    static var routeURLs: [URL] { [] }
+enum TestURLHandler: DestinationURLHandler {
+    static let routeURLs: [URL] = []
 
-    static func handle(withParameters parameters: [String: Any], url: URL) throws {
-        // do nothing
-    }
+    static func handle(withParameters parameters: [String: Any], url: URL) throws {}
 }
 
-extension Destination: Equatable {
-    public static func == (lhs: Destination, rhs: Destination) -> Bool {
-        return lhs.typeDescription == rhs.typeDescription
-    }
-}
+@Test("Registers and finds a route")
+func registersAndFindsRoute() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-struct TestError: Error {
-    var message: String
-
-    init(_ message: String) {
-        self.message = message
-    }
-}
-
-@Test("register and search")
-func registerAndSearch() throws {
-    let router = Router(openHandler: NonOpeningHandler())
-
-    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestableDestinationType.self))
-    try router.register(URL(string: "router://page.router/settings/detailedPage")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestURLHandler.self))
+    try router.register(URL(string: "router://page.router/settings/detailedPage")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings", parameters: [:]))
 
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
 }
 
-@Test("parameters path")
-func parameterPath() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Extracts a path parameter")
+func extractsPathParameter() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-    try router.register(URL(string: "router://page.router/user/:id")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/user/:id")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/user/123", parameters: [:]))
 
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
-    #expect((preOpenResult.parameters["id"] as? String) == "123")
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
+    #expect(preOpenResult.parameters["id"] as? String == "123")
 }
 
-struct ModifingMiddleware: Middleware {
+struct ModifyingMiddleware: Middleware {
     func prepare(string: String, parameters: [String: Any], router: Router) -> (string: String, parameters: [String: Any]) {
         ("router://modified.page", [:])
     }
 }
 
-@Test("middleware modification")
-func middlewareModification() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Middleware rewrites a URL")
+func middlewareRewritesURL() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
-    try router.register(ModifingMiddleware())
-    try router.register(URL(string: "router://modified.page")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(ModifyingMiddleware())
+    try router.register(URL(string: "router://modified.page")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("router://page.router/settings", parameters: [:]))
 
     #expect(preOpenResult.url.absoluteString == "router://modified.page")
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
 }
 
 struct BlockingMiddleware: Middleware {
@@ -87,19 +70,20 @@ struct BlockingMiddleware: Middleware {
 }
 
 @MainActor
-@Test("middleware block")
-func middlewareBlock() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+@Test("Middleware blocks a route")
+func middlewareBlocksRoute() throws {
+    let router = Router(openHandler: NoOpOpenHandler())
 
     try router.register(BlockingMiddleware())
-    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "router://page.router/settings")!, destination: .urlHandler(TestURLHandler.self))
 
     do {
         _ = try router.open("router://page.router/settings", parameters: [:])
-        throw TestError("Should throw")
+        Issue.record("Expected middleware to block the route")
     } catch {
-        guard case .blockedByMiddleware(let middleware) = error as? RouterError else {
-            throw TestError("Should be blocked by middleware")
+        guard case .blockedByMiddleware(let middleware) = error else {
+            Issue.record("Unexpected router error: \(error)")
+            return
         }
         #expect(type(of: middleware) == BlockingMiddleware.self)
     }
@@ -124,16 +108,16 @@ struct AppStoreRewriteMiddleware: Middleware {
 }
 
 @available(iOS 16.0, *)
-@Test("app store rewrite")
+@Test("Rewrites an App Store URL")
 func appStoreRewrite() throws {
-    let router = Router(openHandler: NonOpeningHandler())
+    let router = Router(openHandler: NoOpOpenHandler())
 
     try router.register(AppStoreRewriteMiddleware())
-    try router.register(URL(string: "appstore://apple.com/app/:id")!, destination: .urlHandler(TestableDestinationType.self))
+    try router.register(URL(string: "appstore://apple.com/app/:id")!, destination: .urlHandler(TestURLHandler.self))
 
     let preOpenResult = try #require(try router.preOpen("https://apps.apple.com/app/id2343432205", parameters: [:]))
 
     #expect(preOpenResult.url.absoluteString == "appstore://apple.com/app/2343432205")
-    #expect((preOpenResult.parameters["id"] as? String) == "2343432205")
-    #expect(preOpenResult.destination == .urlHandler(TestableDestinationType.self))
+    #expect(preOpenResult.parameters["id"] as? String == "2343432205")
+    #expect(preOpenResult.destination.typeDescription == Destination.urlHandler(TestURLHandler.self).typeDescription)
 }

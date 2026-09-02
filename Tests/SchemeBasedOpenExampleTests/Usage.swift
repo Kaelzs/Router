@@ -9,8 +9,8 @@
 import Testing
 import UIKit
 
-class TestableNavigationController: UINavigationController {
-    var schemeName: String
+final class TestableNavigationController: UINavigationController {
+    let schemeName: String
 
     init(schemeName: String) {
         self.schemeName = schemeName
@@ -27,9 +27,9 @@ extension RouterScheme {
     static let user = RouterScheme(name: "user", navigationGenerator: { TestableNavigationController(schemeName: "user") })
 }
 
-class TestableViewController: UIViewController {
-    var parameters: [String: Any] = [:]
-    var url: URL
+final class TestableViewController: UIViewController {
+    let parameters: [String: Any]
+    let url: URL
 
     init(parameters: [String: Any], url: URL) {
         self.parameters = parameters
@@ -43,9 +43,8 @@ class TestableViewController: UIViewController {
     }
 }
 
-class TestableDestinationViewController: DestinationViewController {
-    // We use the internal method to register this destination for specific url.
-    static var routeURLs: [URL] { [] }
+enum TestableDestinationViewController: DestinationViewController {
+    static let routeURLs: [URL] = []
 
     static func initialize(withParameters parameters: [String: Any], url: URL) throws -> UIViewController {
         TestableViewController(parameters: parameters, url: url)
@@ -63,11 +62,15 @@ extension Router {
 }
 
 @MainActor
-@Test("scheme based open")
-func testSchemeBasedOpen() throws {
+@Test("Opens routes in the selected navigation scheme")
+func opensRoutesInSelectedNavigationScheme() throws {
     let mainNavigationController = TestableNavigationController(schemeName: "main")
     let mainScheme = RouterScheme(name: "main", navigationGenerator: { mainNavigationController })
     let router = Router(openHandler: SchemeBasedRouterOpenHandler(rootNavigationController: mainNavigationController))
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+    window.rootViewController = mainNavigationController
+    window.makeKeyAndVisible()
+    defer { window.isHidden = true }
 
     try router.register(URL(string: "router://page.router/home")!, destination: .viewController(TestableDestinationViewController.self))
     try router.register(URL(string: "router://page.router/settings")!, destination: .viewController(TestableDestinationViewController.self))

@@ -5,26 +5,24 @@
 //  Created by Kael on 2024/11/1.
 //
 
-public class Weak<T>: Hashable {
-    weak var weakRef: AnyObject?
+final class Weak<Object: AnyObject>: Hashable {
+    private weak var weakReference: Object?
+    private let id: ObjectIdentifier
 
-    public var object: T? {
-        weakRef as? T
+    var object: Object? {
+        weakReference
     }
 
-    let id: ObjectIdentifier
-
-    public init(_ obj: T) {
-        let object: AnyObject = obj as AnyObject
-        weakRef = object
+    init(_ object: Object) {
+        weakReference = object
         id = ObjectIdentifier(object)
     }
 
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id.hashValue)
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
-    public static func == (lhs: Weak<T>, rhs: Weak<T>) -> Bool {
+    static func == (lhs: Weak<Object>, rhs: Weak<Object>) -> Bool {
         lhs.id == rhs.id
     }
 }

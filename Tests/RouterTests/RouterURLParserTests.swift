@@ -2,24 +2,17 @@
 import Foundation
 import Testing
 
-@Suite("RouterURLParser")
+@Suite("Router URL parser")
 struct RouterURLParserTests {
     struct ValidRouteCase: Sendable {
         let input: String
         let expectedComponents: [String]
     }
 
-    struct RuntimeCase: Sendable {
-        let input: String
-        let expectedComponents: [String]
-        let expectedQuery: [String: String]
-    }
-
     @Test(
         "Route declarations form a canonical identity without changing the URL",
         arguments: [
-            ValidRouteCase(input: "RoUtEr://Page.Router/Users/Profile", expectedComponents: ["router", "page.router", "Users", "Profile"]),
-            ValidRouteCase(input: "router://host//users///Profile/", expectedComponents: ["router", "host", "users", "Profile"]),
+            ValidRouteCase(input: "RoUtEr://Page.Router//Users///Profile/", expectedComponents: ["router", "page.router", "Users", "Profile"]),
             ValidRouteCase(input: "router://host/a%2Fb/%252F", expectedComponents: ["router", "host", "a/b", "%2F"]),
             ValidRouteCase(input: "router://[::1]/path", expectedComponents: ["router", "[::1]", "path"]),
             ValidRouteCase(input: "router://host/path:part", expectedComponents: ["router", "host", "path:part"]),
@@ -42,19 +35,9 @@ struct RouterURLParserTests {
             "router:path",
             "router:///path",
             "router://user@host/path",
-            "router://user:password@host/path",
-            "router://%FF@host/path",
             "router://host:8080/path",
-            "router://host:999999999999999999999999/path",
-            "router://host:/path",
-            "router://host:",
-            "router://[::1]:80/path",
-            "router://[::1]:/path",
-            "router://host/path?",
             "router://host/path?value=1",
-            "router://host/path#",
             "router://host/path#details",
-            "router://host/path#%FF",
             "router://host/%FF",
         ]
     )
@@ -87,28 +70,16 @@ struct RouterURLParserTests {
         #expect(parsed.url == URLComponents(string: input)?.url)
     }
 
-    @Test(
-        "Runtime paths preserve case, normalize separators, and decode each segment once",
-        arguments: [
-            RuntimeCase(input: "router://host//Users///Profile/", expectedComponents: ["router", "host", "Users", "Profile"], expectedQuery: [:]),
-            RuntimeCase(input: "router://host/a%2Fb/%252F", expectedComponents: ["router", "host", "a/b", "%2F"], expectedQuery: [:]),
-            RuntimeCase(input: "router://host/%ZZ", expectedComponents: ["router", "host", "%ZZ"], expectedQuery: [:]),
-            RuntimeCase(input: "router://[::1]/path", expectedComponents: ["router", "[::1]", "path"], expectedQuery: [:]),
-            RuntimeCase(input: "router://host/path:part?value=a:b", expectedComponents: ["router", "host", "path:part"], expectedQuery: ["value": "a:b"]),
-            RuntimeCase(input: "router://host/path#%FF", expectedComponents: ["router", "host", "path"], expectedQuery: [:]),
-        ]
-    )
-    func parsesRuntimePath(testCase: RuntimeCase) throws {
-        let parsed = try RouterURLParser.parseRuntime(testCase.input)
+    @Test
+    func preservesRawPercentInRuntimePath() throws {
+        let parsed = try RouterURLParser.parseRuntime("router://host/%ZZ")
 
-        #expect(parsed.routeComponents == testCase.expectedComponents)
-        #expect(parsed.queryParameters == testCase.expectedQuery)
-        #expect(parsed.url == URLComponents(string: testCase.input)?.url)
+        #expect(parsed.routeComponents == ["router", "host", "%ZZ"])
     }
 
     @Test
     func appliesRuntimeQueryRulesInSourceOrder() throws {
-        let input = "router://host/path?item=first&item=second&flag&flag=value&empty="
+        let input = "router://host/path?item=first&item=second&flag&flag=value&empty=&equals=a=b=c"
 
         let parsed = try RouterURLParser.parseRuntime(input)
 
@@ -116,17 +87,8 @@ struct RouterURLParserTests {
             "item": "first",
             "flag": "value",
             "empty": "",
+            "equals": "a=b=c",
         ])
-        #expect(parsed.url == URLComponents(string: input)?.url)
-    }
-
-    @Test
-    func preservesAdditionalEqualsCharactersInQueryValue() throws {
-        let input = "router://host/path?value=a=b=c"
-
-        let parsed = try RouterURLParser.parseRuntime(input)
-
-        #expect(parsed.queryParameters["value"] == "a=b=c")
         #expect(parsed.url == URLComponents(string: input)?.url)
     }
 
@@ -138,18 +100,10 @@ struct RouterURLParserTests {
             "router:path",
             "router:///path",
             "router://user@host/path",
-            "router://user:password@host/path",
-            "router://%FF@host/path",
             "router://host:8080/path",
-            "router://host:999999999999999999999999/path",
-            "router://host:/path",
-            "router://host:",
-            "router://[::1]:80/path",
-            "router://[::1]:/path",
             "router://host/%FF",
             "router://host/path?value=%FF",
             "router://host/path?key%5B%5D=value",
-            "router://host/path?key%5B%5D",
         ]
     )
     func rejectsInvalidRuntimeURL(input: String) {

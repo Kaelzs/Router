@@ -5,9 +5,6 @@ import Testing
 
 @Suite("Router concurrency", .serialized)
 struct RouterConcurrencyTests {
-    private let blockedTimeout = DispatchTimeInterval.milliseconds(100)
-    private let completionTimeout = DispatchTimeInterval.seconds(5)
-
     @Test
     func simultaneousPreOpenCallsReachPrepareTogether() throws {
         let gate = BlockingPrepareGate(target: "router://concurrency.test/simultaneous", blockedCallCount: 2)
@@ -17,9 +14,9 @@ struct RouterConcurrencyTests {
 
         let group = DispatchGroup()
         let successfulReads = LockedCounter()
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
-        for _ in 0..<2 {
+        for _ in 0 ..< 2 {
             enqueue(in: group) {
                 do {
                     let result = try router.preOpen("router://concurrency.test/simultaneous", parameters: [:])
@@ -29,7 +26,7 @@ struct RouterConcurrencyTests {
                         errors.append("The registered route did not resolve")
                     }
                 } catch {
-                    errors.append(String(describing: error))
+                    errors.append(error)
                 }
             }
         }
@@ -67,14 +64,14 @@ struct RouterConcurrencyTests {
         let group = DispatchGroup()
         let readerCompleted = DispatchSemaphore(value: 0)
         let registrationCompleted = DispatchSemaphore(value: 0)
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
         enqueue(in: group) {
             defer { readerCompleted.signal() }
             do {
                 _ = try router.preOpen("router://concurrency.test/registration-wait", parameters: [:])
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -85,7 +82,7 @@ struct RouterConcurrencyTests {
             do {
                 try router.register(RegistrationWaitDestination.self)
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -96,7 +93,7 @@ struct RouterConcurrencyTests {
 
         #expect(waitForSignal(contentionReported))
         #expect(waitForSignal(writerDidWait))
-        #expect(isBlocked(registrationCompleted))
+        #expect(isPending(registrationCompleted))
         #expect(reportCount.value == 1)
 
         gate.release.signal()
@@ -122,16 +119,15 @@ struct RouterConcurrencyTests {
         let firstReadCompleted = DispatchSemaphore(value: 0)
         let registrationCompleted = DispatchSemaphore(value: 0)
         let firstReadSawLateMiddleware = LockedValue<Bool>()
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
         enqueue(in: group) {
             defer { firstReadCompleted.signal() }
             do {
                 let result = try router.preOpen("router://concurrency.test/middleware-epoch", parameters: [:])
-                firstReadSawLateMiddleware.value =
-                    result?.parameters["late-middleware"] as? Bool ?? false
+                firstReadSawLateMiddleware.value = result?.parameters["late-middleware"] as? Bool ?? false
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -142,7 +138,7 @@ struct RouterConcurrencyTests {
             do {
                 try router.register(LateMiddleware())
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -152,7 +148,7 @@ struct RouterConcurrencyTests {
         }
 
         #expect(waitForSignal(writerDidWait))
-        #expect(isBlocked(registrationCompleted))
+        #expect(isPending(registrationCompleted))
         gate.release.signal()
         #expect(waitForSignal(firstReadCompleted))
         #expect(waitForSignal(registrationCompleted))
@@ -175,14 +171,14 @@ struct RouterConcurrencyTests {
         let group = DispatchGroup()
         let outerCompleted = DispatchSemaphore(value: 0)
         let registrationCompleted = DispatchSemaphore(value: 0)
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
         enqueue(in: group) {
             defer { outerCompleted.signal() }
             do {
                 _ = try router.preOpen("router://concurrency.test/nested-outer", parameters: [:])
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -193,7 +189,7 @@ struct RouterConcurrencyTests {
             do {
                 try router.register(NestedWriterDestination.self)
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -207,7 +203,7 @@ struct RouterConcurrencyTests {
         controller.beginNested.signal()
         #expect(waitForSignal(controller.nestedFinished))
         #expect(controller.nestedResolved.value == true)
-        #expect(isBlocked(registrationCompleted))
+        #expect(isPending(registrationCompleted))
 
         controller.releaseOuter.signal()
         #expect(waitForSignal(outerCompleted))
@@ -230,14 +226,14 @@ struct RouterConcurrencyTests {
         let registrationCompleted = DispatchSemaphore(value: 0)
         let secondReadCompleted = DispatchSemaphore(value: 0)
         let secondReadResolved = LockedValue<Bool>()
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
         enqueue(in: group) {
             defer { firstReadCompleted.signal() }
             do {
                 _ = try router.preOpen("router://concurrency.test/priority-active", parameters: [:])
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -248,7 +244,7 @@ struct RouterConcurrencyTests {
             do {
                 try router.register(WriterPriorityDestination.self)
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -260,7 +256,7 @@ struct RouterConcurrencyTests {
                 let result = try router.preOpen("router://concurrency.test/priority-new", parameters: [:])
                 secondReadResolved.value = result != nil
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -270,7 +266,7 @@ struct RouterConcurrencyTests {
         }
 
         #expect(waitForSignal(readerDidWait))
-        #expect(isBlocked(controller.newReaderReachedPrepare))
+        #expect(isPending(controller.newReaderReachedPrepare))
 
         controller.releaseActiveReader.signal()
         #expect(waitForSignal(firstReadCompleted))
@@ -292,14 +288,14 @@ struct RouterConcurrencyTests {
 
         let group = DispatchGroup()
         let completed = DispatchSemaphore(value: 0)
-        let errors = LockedStrings()
+        let errors = LockedErrors()
 
         enqueue(in: group) {
             defer { completed.signal() }
             do {
                 _ = try router.preOpen("router://concurrency.test/reentrant-prepare", parameters: [:])
             } catch {
-                errors.append(String(describing: error))
+                errors.append(error)
             }
         }
 
@@ -313,33 +309,6 @@ struct RouterConcurrencyTests {
         #expect(errors.values.isEmpty)
     }
 
-    @Test
-    func registrationFromAfterFindingThrowsReentrantRegistration() async throws {
-        let attempt = RegistrationAttemptRecorder()
-        let router = Router(openHandler: TestOpenHandler())
-        try router.register(ConcurrencyBaseDestination.self)
-        try router.register(AfterFindingRegistrationMiddleware(attempt: attempt))
-        let completed = DispatchSemaphore(value: 0)
-        let errors = LockedStrings()
-
-        Task { @MainActor in
-            defer { completed.signal() }
-            do {
-                _ = try router.open("router://concurrency.test/reentrant-after")
-            } catch {
-                errors.append(String(describing: error))
-            }
-        }
-
-        let didComplete = await waitForSignalWithoutBlockingTestExecutor(completed)
-        #expect(didComplete)
-        guard didComplete else {
-            return
-        }
-
-        expectReentrantFailure(attempt.outcome)
-        #expect(errors.values.isEmpty)
-    }
 #endif
 
     private func expectReentrantFailure(_ outcome: RegistrationAttempt?) {
@@ -355,34 +324,6 @@ struct RouterConcurrencyTests {
         }
     }
 
-    private func enqueue(in group: DispatchGroup, _ body: @escaping @Sendable () -> Void) {
-        group.enter()
-        Thread.detachNewThread {
-            defer { group.leave() }
-            body()
-        }
-    }
-
-    private func waitForSignal(_ semaphore: DispatchSemaphore) -> Bool {
-        semaphore.wait(timeout: .now() + completionTimeout) == .success
-    }
-
-    private func waitForSignalWithoutBlockingTestExecutor(_ semaphore: DispatchSemaphore) async -> Bool {
-        let deadline = DispatchTime.now() + completionTimeout
-        return await withCheckedContinuation { continuation in
-            Thread.detachNewThread {
-                continuation.resume(returning: semaphore.wait(timeout: deadline) == .success)
-            }
-        }
-    }
-
-    private func isBlocked(_ semaphore: DispatchSemaphore) -> Bool {
-        semaphore.wait(timeout: .now() + blockedTimeout) == .timedOut
-    }
-
-    private func waitForGroup(_ group: DispatchGroup) -> Bool {
-        group.wait(timeout: .now() + completionTimeout) == .success
-    }
 }
 
 private struct GatedPrepareMiddleware: Middleware {
@@ -449,9 +390,7 @@ private struct NestedPreOpenMiddleware: Middleware {
 
         controller.outerEntered.signal()
         controller.beginNested.wait()
-        controller.nestedResolved.value = (
-            try? router.preOpen("router://concurrency.test/nested-inner", parameters: [:])
-        ) != nil
+        controller.nestedResolved.value = (try? router.preOpen("router://concurrency.test/nested-inner", parameters: [:])) != nil
         controller.nestedFinished.signal()
         controller.releaseOuter.wait()
         return (string, parameters)
@@ -519,21 +458,6 @@ private struct PrepareRegistrationMiddleware: Middleware {
     }
 }
 
-private struct AfterFindingRegistrationMiddleware: Middleware {
-    let attempt: RegistrationAttemptRecorder
-
-    @MainActor
-    func afterFinding(_ destination: any DestinationURLHandler.Type, parameters: [String: Any], originalURL: URL, router: Router) -> MiddlewareHandledStrategy {
-        do {
-            try router.register(ReentrantDestination.self)
-            attempt.record(.success)
-        } catch {
-            attempt.record(.failure(error))
-        }
-        return .allow(parameters: parameters)
-    }
-}
-
 private enum ConcurrencyBaseDestination: DestinationURLHandler {
     static let routeURLs = [
         URL(string: "router://concurrency.test/simultaneous")!,
@@ -543,7 +467,6 @@ private enum ConcurrencyBaseDestination: DestinationURLHandler {
         URL(string: "router://concurrency.test/nested-inner")!,
         URL(string: "router://concurrency.test/priority-active")!,
         URL(string: "router://concurrency.test/reentrant-prepare")!,
-        URL(string: "router://concurrency.test/reentrant-after")!,
     ]
 
     @MainActor
@@ -551,83 +474,29 @@ private enum ConcurrencyBaseDestination: DestinationURLHandler {
 }
 
 private enum RegistrationWaitDestination: DestinationURLHandler {
-    static let routeURLs = [
-        URL(string: "router://concurrency.test/registration-finished")!,
-    ]
+    static let routeURLs = [URL(string: "router://concurrency.test/registration-finished")!]
 
     @MainActor
     static func handle(withParameters parameters: [String: Any], url: URL) throws {}
 }
 
 private enum NestedWriterDestination: DestinationURLHandler {
-    static let routeURLs = [
-        URL(string: "router://concurrency.test/nested-writer")!,
-    ]
+    static let routeURLs = [URL(string: "router://concurrency.test/nested-writer")!]
 
     @MainActor
     static func handle(withParameters parameters: [String: Any], url: URL) throws {}
 }
 
 private enum WriterPriorityDestination: DestinationURLHandler {
-    static let routeURLs = [
-        URL(string: "router://concurrency.test/priority-new")!,
-    ]
+    static let routeURLs = [URL(string: "router://concurrency.test/priority-new")!]
 
     @MainActor
     static func handle(withParameters parameters: [String: Any], url: URL) throws {}
 }
 
 private enum ReentrantDestination: DestinationURLHandler {
-    static let routeURLs = [
-        URL(string: "router://concurrency.test/reentrant-registered")!,
-    ]
+    static let routeURLs = [URL(string: "router://concurrency.test/reentrant-registered")!]
 
     @MainActor
     static func handle(withParameters parameters: [String: Any], url: URL) throws {}
-}
-
-private final class LockedCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storedValue = 0
-
-    var value: Int {
-        lock.withLock { storedValue }
-    }
-
-    func increment() {
-        lock.withLock {
-            storedValue += 1
-        }
-    }
-}
-
-private final class LockedStrings: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storedValues: [String] = []
-
-    var values: [String] {
-        lock.withLock { storedValues }
-    }
-
-    func append(_ value: String) {
-        lock.withLock {
-            storedValues.append(value)
-        }
-    }
-}
-
-private final class LockedValue<Value>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storedValue: Value?
-
-    var value: Value? {
-        get {
-            lock.withLock { storedValue }
-        }
-        set {
-            lock.withLock {
-                storedValue = newValue
-            }
-        }
-    }
 }

@@ -15,7 +15,6 @@ final class RouterReadWriteLock: @unchecked Sendable {
     private var waitingWriters = 0
     private var writerIsActive = false
     private var readDepthByThread: [ObjectIdentifier: Int] = [:]
-    private var reporterReadAllowanceByThread: [ObjectIdentifier: Int] = [:]
     private let contentionReporter: ContentionReporter
     private let waiterObservation: WaiterObservation?
 
@@ -24,14 +23,6 @@ final class RouterReadWriteLock: @unchecked Sendable {
     }, waiterObservation: WaiterObservation? = nil) {
         self.contentionReporter = contentionReporter
         self.waiterObservation = waiterObservation
-    }
-
-    var canCurrentThreadReadImmediately: Bool {
-        let thread = ObjectIdentifier(Thread.current)
-
-        condition.lock()
-        defer { condition.unlock() }
-        return canBeginRead(on: thread)
     }
 
     func withReadAccess<Failure: Error, Result: ~Copyable>(_ body: () throws(Failure) -> Result) throws(Failure) -> Result {
@@ -83,8 +74,7 @@ final class RouterReadWriteLock: @unchecked Sendable {
         waitingWriters += 1
         let mustWait = activeReaders > 0 || writerIsActive
         if mustWait {
-            reporterReadAllowanceByThread[thread, default: 0] += 1
-            reportContention(on: thread)
+            reportContention()
         }
 
         var didObserveWait = false
@@ -114,25 +104,12 @@ final class RouterReadWriteLock: @unchecked Sendable {
             return false
         }
 
-        return waitingWriters == 0
-            || readDepthByThread[thread] != nil
-            || reporterReadAllowanceByThread[thread] != nil
+        return waitingWriters == 0 || readDepthByThread[thread] != nil
     }
 
-    private func reportContention(on thread: ObjectIdentifier) {
+    private func reportContention() {
         condition.unlock()
-        defer {
-            condition.lock()
-
-            let remainingDepth =
-                reporterReadAllowanceByThread[thread, default: 1] - 1
-            if remainingDepth == 0 {
-                reporterReadAllowanceByThread.removeValue(forKey: thread)
-            } else {
-                reporterReadAllowanceByThread[thread] = remainingDepth
-            }
-        }
-
         contentionReporter()
+        condition.lock()
     }
 }

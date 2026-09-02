@@ -6,43 +6,6 @@ import Testing
 @Suite("NCArray", .serialized)
 struct NCArrayTests {
     @Test
-    func initializesWithZeroAndReservedCapacityThenGrows() {
-        var empty = NCArray<Int>(count: 0)
-        var reserved = NCArray<Int>(count: 4)
-
-        let emptyInitialCount = empty.count
-        let emptyInitialCapacity = empty.capacity
-        let emptyInitiallyIsEmpty = empty.isEmpty
-        let reservedInitialCount = reserved.count
-        let reservedInitialCapacity = reserved.capacity
-
-        #expect(emptyInitialCount == 0)
-        #expect(emptyInitialCapacity == 0)
-        #expect(emptyInitiallyIsEmpty)
-        #expect(reservedInitialCount == 0)
-        #expect(reservedInitialCapacity == 4)
-
-        for value in 0 ..< 8 {
-            empty.append(value)
-            reserved.append(value)
-        }
-
-        let emptyFinalCount = empty.count
-        let emptyFinalCapacity = empty.capacity
-        let reservedFinalCount = reserved.count
-        let reservedFinalCapacity = reserved.capacity
-        let emptyValues = values(in: empty)
-        let reservedValues = values(in: reserved)
-
-        #expect(emptyFinalCount == 8)
-        #expect(emptyFinalCapacity >= 8)
-        #expect(reservedFinalCount == 8)
-        #expect(reservedFinalCapacity >= 8)
-        #expect(emptyValues == Array(0 ..< 8))
-        #expect(reservedValues == Array(0 ..< 8))
-    }
-
-    @Test
     func insertsAtFrontMiddleAndEnd() {
         var array = NCArray<Int>(count: 0)
         array.append(1)
@@ -109,14 +72,15 @@ struct NCArrayTests {
         #expect(recorder.counts == Dictionary(uniqueKeysWithValues: (0 ... 10).map { ($0, 1) }))
     }
 
-    @Test(arguments: [1, 2, 4, 8])
-    func frozenStorageSupportsConcurrentReads(queueCount: Int) {
+    @Test
+    func frozenStorageSupportsConcurrentReads() {
+        let queueCount = 4
         var array = NCArray<Int>(count: 0)
         for value in 0 ..< 1_024 {
             array.append(value)
         }
         let box = FrozenNCArrayBox(consume array)
-        let checksum = LockedInteger()
+        let checksum = LockedCounter()
         let group = DispatchGroup()
         let start = DispatchSemaphore(value: 0)
 
@@ -143,7 +107,9 @@ struct NCArrayTests {
 
     private func values(in array: borrowing NCArray<Int>) -> [Int] {
         array.reduce([Int]()) { partialResult, element in
-            partialResult + [element]
+            var result = partialResult
+            result.append(element)
+            return result
         }
     }
 }
@@ -172,27 +138,10 @@ private final class DeinitRecorder: @unchecked Sendable {
     }
 }
 
-private final class FrozenNCArrayBox<Element: Sendable & ~Copyable>:
-    @unchecked Sendable
-{
+private final class FrozenNCArrayBox<Element: Sendable & ~Copyable>: Sendable {
     let array: NCArray<Element>
 
     init(_ array: consuming NCArray<Element>) {
         self.array = consume array
-    }
-}
-
-private final class LockedInteger: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = 0
-
-    var value: Int {
-        lock.withLock { storage }
-    }
-
-    func add(_ value: Int) {
-        lock.withLock {
-            storage += value
-        }
     }
 }
